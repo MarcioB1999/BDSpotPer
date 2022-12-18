@@ -1,5 +1,5 @@
 # BDSpotPer
-É um app simples para criação/edição/remoção e visualização de playlists de músicas. A interface se conecta a um banco de dados relacional simples
+É um app simples para criação/edição/remoção e visualização de playlists de músicas. A interface se conecta a um banco de dados relacional, criado no SQL Server
 ## Diagrama ER
 ![Diagrama ER](https://github.com/MarcioB1999/BDSpotPer/blob/main/BDSpoPer_DiagramaER.png)
 Todos demais dados que não sejam de playlist, ja devem ser populados anteriormente para o uso do usuário. Como, músicas, albuns, gravadoras, e assim por diante. 
