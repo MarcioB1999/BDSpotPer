@@ -1,0 +1,340 @@
+////////////////////////////
+//DEFINIÇÃO
+////////////////////////////
+
+CREATE DATABASE BDSpotPer
+ON
+	PRIMARY
+	(
+	NAME = 'BDSpotPer',
+	FILENAME = 'C:\FBD_trab\BDSpotPer.mdf',
+	SIZE = 5120KB,
+	FILEGROWTH = 30%
+	),
+
+	FILEGROUP BDSpotPer_fg01
+	(
+	NAME = 'BDSpotPer_001',
+	FILENAME = 'C:\FBD_trab\BDSpotPer_001.ndf',
+	SIZE = 1024KB,
+	FILEGROWTH = 30%
+	),
+	(
+	NAME ='BDSpotPer_002',
+	FILENAME = 'C:\FBD_trab\BDSpotPer_002.ndf',
+	SIZE = 1024KB,
+	FILEGROWTH = 30%
+	),
+
+	FILEGROUP BDSpotPer_fg02
+	(
+	NAME = 'BDSpotPer_003',
+	FILENAME = 'C:\FBD_trab\BDSpotPer_003.ndf',
+	SIZE = 1024KB,
+	FILEGROWTH = 30%
+	)
+
+	LOG ON
+	(
+	NAME = 'BDSpotPer_log',
+	FILENAME = 'C:\FBD_trab\BDSpotPer_log.ldf',
+	SIZE = 1024KB,
+	FILEGROWTH = 10%
+	)
+
+
+
+
+
+
+
+
+/////////////////////////
+//CRIAR TABELAS
+/////////////////////////
+
+create table gravadora(
+    id int primary key not null,
+    nome varchar(20) not null,
+    endereço varchar(40) not null,
+    homepage varchar(20) not null,
+) on BDSpotPer_fg01
+---
+
+create table album(
+    id int primary key not null,
+    data_gravacao date not null,
+    preço_compra float not null,
+    tipo_compra varchar(20) not null,
+    data_compra date not null,
+    meio_fisico char(8) not null,
+    descrição varchar(40) not null,
+
+    gravadora int foreign key references gravadora (id) on update cascade not null,
+
+    constraint check_data check (data_gravacao>'01-01-2000'),
+    constraint check_meio_fisico check (meio_fisico='CD' or meio_fisico='Vinil' or meio_fisico='Download')
+) on BDSpotPer_fg01
+---
+
+create table composicao(
+    id int primary key not null,
+    descricao varchar(100) not null
+) on BDSpotPer_fg01
+---
+
+create table faixa(
+    album int foreign key references album (id)  on update cascade not null,
+    numero_faixa int not null,
+    primary key(numero_faixa,album), --indice primario sob o numero do album
+
+    descricao varchar(100),
+    tempo_execucao float not null,
+    tipo_gravacao char(3) not null,
+
+
+    composicao int foreign key references composicao (id) on update cascade not null,
+
+    constraint check_execucao check (tempo_execucao>0),
+    constraint check_tipo_gravacao check (tipo_gravacao='ADD' or tipo_gravacao='DDD')
+) on BDSpotPer_fg02
+---
+
+create table periodo_musical(
+    id int primary key not null,
+    descricao char(11) not null,
+    inicio int not null,
+    fim int default null,
+
+    constraint check_desc check (descricao='idade média' or
+    descricao='renascença' or descricao='barroco' or descricao='clássico' or descricao='romântico' or descricao='moderno')
+) on BDSpotPer_fg01
+---
+
+create table playlist(
+    id int primary key not null,
+    nome varchar(50) not null,
+    data_criacao date default getdate(),
+    tempo_total float default 0,
+) on BDSpotPer_fg02
+---
+
+create table pertence_playlist(
+    numero_faixa int not null,
+	  album int not null,
+
+    playlist int foreign key references playlist (id) on update cascade on delete cascade not null,
+    qtd_tocadas int default 0,
+    ultima_tocada date,
+
+	foreign key (numero_faixa,album) references faixa (numero_faixa,album) on update cascade on delete cascade,
+
+    primary key(playlist,album,numero_faixa)
+) on BDSpotPer_fg02
+---
+
+
+create table compositor(
+    id int primary key not null,
+    nome varchar(20) not null,
+    data_nascimento date not null,
+    data_morte date,
+    cidade varchar(20) not null,
+    pais varchar(20) not null,
+    periodo_musical int foreign key references periodo_musical (id)  on update cascade not null
+) on BDSpotPer_fg01
+---
+
+create table interprete(
+    id int primary key not null,
+    nome varchar(20) not null,
+    tipo varchar(15) not null,
+) on BDSpotPer_fg01
+---
+
+create table compos(
+    compositor int foreign key references compositor (id) on update cascade  on delete cascade not null,
+    numero_faixa int  not null,
+    album int not null,
+
+	foreign key (numero_faixa,album) references faixa (numero_faixa,album) on update cascade on delete cascade,
+
+    primary key(compositor,album,numero_faixa)
+) on BDSpotPer_fg01
+---
+
+create table reproduziu(
+    interprete int foreign key references interprete (id) on update cascade on delete cascade not null,
+    numero_faixa int not null,
+    album int not null,
+
+	foreign key (numero_faixa,album) references faixa (numero_faixa,album) on update cascade on delete cascade,
+
+    primary key(interprete,album,numero_faixa)
+) on BDSpotPer_fg01
+---
+
+
+
+////////////////////////
+//VISAO MATERIALIZADA
+////////////////////////
+
+create view dbo.vPlaylists(ID,NomePlaylist,QuantMusicas,QuantAlbuns)
+with schemabinding as
+
+SELECT p.id, p.nome, count_big(pp.numero_faixa), count_big(distinct pp.album)
+FROM dbo.playlist p INNER JOIN dbo.pertence_playlist pp
+ON p.id=pp.playlist
+GROUP BY p.id, p.nome, pp.playlist
+---
+
+
+
+///////////////////////
+//ÍNDICE SECUNDARIO
+///////////////////////
+
+create unique nonclustered index Ind_Faixa_Comp
+on faixa (composicao)
+with (pad_index=OFF, fillfactor=100);
+
+
+
+
+
+//////////////////////
+//TRIGGERS
+//////////////////////
+
+create trigger trg_preço_compra
+on album
+for insert,update
+
+as begin
+
+declare @media_preço float, @preço float
+
+select @preço=preço_compra
+from inserted
+
+select @media_preço=preço_compra
+from faixa f, album a
+where f.tipo_gravacao='DDD' and f.album=a.id
+group by a.id, preço_compra
+having count(tipo_gravacao)=(select count(tipo_gravacao)
+from faixa
+where album=a.id
+)
+
+if @preço>3*@media_preço
+begin
+ raiserror('preço compra inválido',16,1)
+ rollback transaction
+end
+
+end
+---
+
+
+create trigger trg_faixas_maximas
+on faixa
+for insert,update
+
+as begin
+
+declare @id_album float, @qtd_faixas float
+
+select @id_album=album
+from inserted;
+
+select @qtd_faixas=count(*)
+from faixa f
+where f.album=@id_album
+
+if @qtd_faixas>16
+begin
+ raiserror('album lotado',16,1)
+ rollback transaction
+end
+
+end
+---
+
+
+create trigger trg_album_barroco
+on faixa
+for insert, update
+as begin
+
+  declare @num_faixa int, @album int, @tipo char(3);
+
+  select @num_faixa=numero_faixa, @album=album, @tipo=tipo_gravacao
+  from inserted;
+
+  if @tipop not like 'DDD' and exists ( --se um dos compositores é barroco
+      select compositor.id from compositor
+      inner join compos cp on
+        cp.compositor=compositor.id and cp.album=@album
+        and cp.numero_faixa=@num_faixa
+      inner join periodo_musical pm on
+        pm.id=compositor.periodo_musical and pm.descricao like '_arroco'
+  )
+  begin
+    print 'ERRO: A faixa inserida torna o album inválido (composição barroca). Deletando o album...';
+    delete from album where id=@album;
+  end
+
+end
+---
+
+
+
+/////////////////////
+//PROCEDURES
+/////////////////////
+
+create procedure qtd_tocada
+    @numero_faixa int,
+    @album int,
+    @playlist int
+as
+    update pertence_playlist
+    set qtd_tocadas = qtd_tocadas+1
+    where numero_faixa=@numero_faixa and album=@album and playlist=@playlist
+---
+
+create procedure ultima_vez_tocada
+    @numero_faixa int,
+    @album int,
+    @playlist int
+as
+    update pertence_playlist
+    set ultima_tocada = getdate()
+    where numero_faixa=@numero_faixa and album=@album and playlist=@playlist
+---
+
+
+//////////////////////
+//FUNCTIONS
+//////////////////////
+
+create function comp_album (@nome_compositor varchar(50))
+returns table as
+
+return select distinct f.album
+       from compositor c,compos rel,faixa f
+       where c.nome like '%'+@nome_compositor+'%' and f.numero_faixa=rel.numero_faixa and f.album=rel.album and c.id=rel.compositor
+
+
+
+
+
+
+
+
+
+
+
+
+

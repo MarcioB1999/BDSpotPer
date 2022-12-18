@@ -1,0 +1,74 @@
+-- item A
+SELECT * FROM album a1
+WHERE a1.preço_compra > (
+	SELECT avg(a2.preço_compra) FROM album a2
+)
+
+
+
+
+-- item B
+select g.nome,count(distinct pp.playlist)
+from gravadora g, album a,faixa f,pertence_playlist pp
+where g.id=a.gravadora and a.id=f.album and f.numero_faixa=pp.numero_faixa and f.album=pp.album 
+and exists (select *
+            from faixa f2, compos, compositor c,pertence_playlist pp2
+			where f2.album=compos.album and f2.numero_faixa=compos.numero_faixa and compos.compositor=c.id and c.nome='Dvorack'
+			and pp2.album=f2.album and pp2.numero_faixa=f2.numero_faixa and pp2.playlist=pp.playlist)
+group by g.id,g.nome 
+having count(distinct pp.playlist)>=all(select count(distinct pp.playlist)
+                  from gravadora g, album a,faixa f,pertence_playlist pp
+                  where g.id=a.gravadora and a.id=f.album and f.numero_faixa=pp.numero_faixa and f.album=pp.album 
+                  and exists (select *
+                              from faixa f2, compos, compositor c,pertence_playlist pp2
+			                  where f2.album=compos.album and f2.numero_faixa=compos.numero_faixa and compos.compositor=c.id and c.nome='Dvorack'
+			                  and pp2.album=f2.album and pp2.numero_faixa=f2.numero_faixa and pp2.playlist=pp.playlist)
+                  group by g.id,g.nome )
+
+
+
+
+
+-- item C
+select c.nome, count(pp.numero_faixa)
+from compositor c,compos,pertence_playlist pp, faixa f
+where c.id=compos.compositor and f.album=compos.album and f.numero_faixa=compos.numero_faixa and pp.album=compos.album and pp.numero_faixa=compos.numero_faixa
+group by c.id,c.nome
+having count(pp.numero_faixa)>=all(
+	select count(pp2.numero_faixa)
+	from compositor c2,compos compos2,pertence_playlist pp2, faixa f2
+	where c2.id=compos2.compositor and f2.album=compos2.album and f2.numero_faixa=compos2.numero_faixa and pp2.album=compos2.album and pp2.numero_faixa=compos2.numero_faixa
+	group by c2.id,c2.nome
+)
+
+
+
+
+
+
+-- item D
+SELECT * FROM playlist p1
+WHERE NOT EXISTS (
+	SELECT * FROM faixa
+	INNER JOIN pertence_playlist pp ON ( 
+		pp.album=faixa.album AND pp.numero_faixa=faixa.numero_faixa
+		AND pp.playlist=p1.id 
+	)
+	INNER JOIN composicao ON (
+		faixa.composicao=composicao.id
+	)
+	INNER JOIN compos ON (
+		faixa.album=compos.album
+		AND faixa.numero_faixa=compos.numero_faixa
+	)
+	INNER JOIN compositor ON (
+		compositor.id=compos.compositor
+	)
+	INNER JOIN periodo_musical ON (
+		periodo_musical.id=compositor.periodo_musical
+		AND (
+			periodo_musical.descricao NOT LIKE 'barroco'
+			AND composicao.descricao NOT LIKE 'concerto'
+		)
+	)
+)
